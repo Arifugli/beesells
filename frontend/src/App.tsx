@@ -73,8 +73,10 @@ function Router() {
 function resolveGHPagesPath() {
   const search = window.location.search;
   if (search.startsWith("?/")) {
-    const path = search.slice(1) + window.location.hash;
-    window.history.replaceState(null, "", path);
+    const path = search.slice(1).split("&").join("?");
+    window.history.replaceState(null, "", 
+      window.location.pathname.replace(/\/$/, "") + path + window.location.hash
+    );
   }
 }
 resolveGHPagesPath();
