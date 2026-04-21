@@ -4,17 +4,15 @@ import { getToken, setToken, clearToken, type User } from "@/lib/api";
 export interface Session { token: string; user: User; }
 
 export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  useEffect(() => {
+  const [session, setSession] = useState<Session | null>(() => {
     const token = getToken();
     const raw = localStorage.getItem("ts_user");
     if (token && raw) {
-      try { setSession({ token, user: JSON.parse(raw) }); } catch { clearToken(); }
+      try { return { token, user: JSON.parse(raw) }; } catch { clearToken(); }
     }
-    setIsLoaded(true);
-  }, []);
+    return null;
+  });
+  const [isLoaded, setIsLoaded] = useState(true);
 
   const login = (token: string, user: User) => {
     setToken(token);
