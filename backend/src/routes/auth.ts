@@ -8,8 +8,21 @@ import { z } from "zod";
 
 const router = Router();
 
-// POST /auth/login/admin  { password }
-router.post("/auth/login/admin", async (req, res): Promise<void> => {
+function wrap(handler: (req: any, res: any) => Promise<void> | void) {
+  return async (req: any, res: any, next: any) => {
+    try { await handler(req, res); }
+    catch (err: any) {
+      console.error(`[auth] ${req.method} ${req.path} error:`, err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err?.message || "Internal server error" });
+      }
+      next();
+    }
+  };
+}
+
+// POST /auth/login/admin
+router.post("/auth/login/admin", wrap(async (req, res) => {
   const parsed = z.object({ password: z.string() }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Password required" }); return; }
 
@@ -21,10 +34,10 @@ router.post("/auth/login/admin", async (req, res): Promise<void> => {
 
   const token = signToken({ id: admin.id, role: "admin", name: admin.name });
   res.json({ token, user: { id: admin.id, role: "admin", name: admin.name } });
-});
+}));
 
-// POST /auth/login/select  { userId }  — for manager & operator (no password)
-router.post("/auth/login/select", async (req, res): Promise<void> => {
+// POST /auth/login/select
+router.post("/auth/login/select", wrap(async (req, res) => {
   const parsed = z.object({ userId: z.number().int() }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "userId required" }); return; }
 
@@ -34,23 +47,21 @@ router.post("/auth/login/select", async (req, res): Promise<void> => {
 
   const token = signToken({ id: user.id, role: user.role as "manager" | "operator", name: user.name });
   res.json({ token, user: { id: user.id, role: user.role, name: user.name } });
-});
+}));
 
-// GET /auth/users?role=operator|manager  — list selectable users for login screen
-router.get("/auth/users", async (req, res) => {
-  const role = req.query.role as string;
-  let query = db.select({
+// GET /auth/users?role=
+router.get("/auth/users", wrap(async (req, res) => {
+  const role = req.query.role as string | undefined;
+  const users = await db.select({
     id: usersTable.id,
     name: usersTable.name,
     role: usersTable.role,
-  }).from(usersTable);
+  }).from(usersTable).orderBy(usersTable.name);
 
-  const users = await query;
   const filtered = role
     ? users.filter(u => u.role === role)
     : users.filter(u => u.role !== "admin");
-
   res.json(filtered);
-});
+}));
 
 export default router;
