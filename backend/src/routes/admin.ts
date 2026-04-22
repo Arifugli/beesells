@@ -35,9 +35,9 @@ router.get("/admin/branches", adminOnly, wrap(async (_req, res) => {
       .where(eq(branchManagersTable.branchId, b.id));
 
     const operators = await db
-      .select({ id: usersTable.id })
-      .from(branchOperatorsTable)
-      .where(eq(branchOperatorsTable.branchId, b.id));
+  .select({ id: branchOperatorsTable.operatorId })
+  .from(branchOperatorsTable)
+  .where(eq(branchOperatorsTable.branchId, b.id));
 
     result.push({ ...b, managers, operatorCount: operators.length });
   }
