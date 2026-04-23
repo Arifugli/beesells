@@ -4,7 +4,6 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Toaster } from "@/components/ui/Toaster";
 
 import Login from "@/pages/Login";
-import ResetPassword from "@/pages/ResetPassword";
 import OperatorDashboard from "@/pages/operator/Dashboard";
 import OperatorLog from "@/pages/operator/Log";
 import ManagerDashboard from "@/pages/manager/Dashboard";
@@ -43,8 +42,6 @@ function Router() {
   return (
     <Switch>
       <Route path="/">{user ? <Redirect to={home} /> : <Login />}</Route>
-      <Route path="/reset-password"><ResetPassword /></Route>
-
       <Route path="/operator"><Protected component={OperatorDashboard} roles={["operator"]} /></Route>
       <Route path="/operator/log"><Protected component={OperatorLog} roles={["operator"]} /></Route>
 
