@@ -13,7 +13,7 @@ export default function AdminManagers() {
   const { data: managers = [], isLoading } = useQuery({ queryKey: ["admin-managers"], queryFn: api.admin.managers });
 
   const createMutation = useMutation({ mutationFn: (d: { name: string; email?: string; password?: string }) => api.admin.createManager(d) });
-  const updateMutation = useMutation({ mutationFn: ({ id, name }: { id: number; name: string }) => api.admin.updateManager(id, name) });
+  const updateMutation = useMutation({ mutationFn: ({ id, ...data }: { id: number; name?: string; email?: string | null; password?: string }) => api.admin.updateManager(id, data) });
   const deleteMutation = useMutation({ mutationFn: (id: number) => api.admin.deleteManager(id) });
 
   const [formOpen, setFormOpen] = useState(false);
@@ -31,7 +31,7 @@ export default function AdminManagers() {
   const handleSave = () => {
     if (!formName.trim()) { toast("Введите имя", "error"); return; }
     if (editingId) {
-      updateMutation.mutate({ id: editingId, name: formName.trim(), email: formEmail.trim() || null, password: formPassword || undefined }, {
+      updateMutation.mutate({ id: editingId, name: formName.trim() || undefined, email: formEmail.trim() || null, password: formPassword || undefined }, {
         onSuccess: () => { refresh(); setFormOpen(false); toast("Менеджер обновлён", "success"); },
         onError: (e: Error) => toast(e.message, "error"),
       });

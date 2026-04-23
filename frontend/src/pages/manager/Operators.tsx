@@ -101,8 +101,8 @@ export default function ManagerOperators() {
   const { data: operators = [], isLoading } = useQuery({ queryKey: ["manager-operators"], queryFn: () => api.manager.operators() });
   const { data: categories = [] } = useQuery({ queryKey: ["manager-kpi-categories"], queryFn: api.manager.kpiCategories });
 
-  const createMutation = useMutation({ mutationFn: ({ name, branchId }: { name: string; branchId: number }) => api.manager.createOperator(name, branchId) });
-  const updateMutation = useMutation({ mutationFn: ({ id, name }: { id: number; name: string }) => api.manager.updateOperator(id, name) });
+  const createMutation = useMutation({ mutationFn: (data: { name: string; branchId: number; email?: string; password?: string }) => api.manager.createOperator(data) });
+  const updateMutation = useMutation({ mutationFn: ({ id, ...data }: { id: number; name?: string; email?: string | null; password?: string }) => api.manager.updateOperator(id, data) });
   const deleteMutation = useMutation({ mutationFn: (id: number) => api.manager.deleteOperator(id) });
 
   const [formOpen, setFormOpen] = useState(false);
@@ -126,7 +126,7 @@ export default function ManagerOperators() {
   const handleSave = () => {
     if (!formName.trim()) { toast("Введите имя", "error"); return; }
     if (editingOp) {
-      updateMutation.mutate({ id: editingOp.id, name: formName.trim(), email: formEmail.trim() || null, password: formPassword || undefined }, {
+      updateMutation.mutate({ id: editingOp.id, name: formName.trim() || undefined, email: formEmail.trim() || null, password: formPassword || undefined }, {
         onSuccess: () => { refresh(); setFormOpen(false); toast("Оператор обновлён", "success"); },
         onError: (e: Error) => toast(e.message, "error"),
       });
