@@ -47,12 +47,12 @@ export const api = {
   auth: {
     login: (login: string, password: string) =>
       request<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify({ login, password }) }),
+    loginAdmin: (password: string) =>
+      request<AuthResponse>("/auth/login/admin", { method: "POST", body: JSON.stringify({ password }) }),
+    loginSelect: (userId: number) =>
+      request<AuthResponse>("/auth/login/select", { method: "POST", body: JSON.stringify({ userId }) }),
     users: (role?: string) =>
       request<(User & { hasPassword: boolean })[]>(`/auth/users${role ? `?role=${role}` : ""}`),
-    forgotPassword: (login: string) =>
-      request<{ message: string }>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ login }) }),
-    resetPassword: (token: string, password: string) =>
-      request<{ message: string }>("/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password }) }),
   },
   admin: {
     branches: () => request<BranchDetail[]>("/admin/branches"),
