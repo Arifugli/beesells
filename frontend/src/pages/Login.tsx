@@ -10,39 +10,41 @@ type Role = "operator" | "manager" | "admin";
 export default function Login() {
   const { login } = useAuth();
   const [tab, setTab] = useState<Role>("operator");
-  const [loginInput, setLoginInput] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
-  // Load users for passwordless select
-  const { data: users = [] } = useQuery({
+  // Load all users for this role
+  const { data: users = [], isLoading } = useQuery({
     queryKey: ["auth-users", tab],
     queryFn: () => api.auth.users(tab === "admin" ? undefined : tab),
     enabled: tab !== "admin",
   });
 
-  const usersWithoutPwd = users.filter(u => !u.hasPassword);
-  const usersWithPwd = users.filter(u => u.hasPassword);
-
   // Admin login
   const adminMutation = useMutation({
-    mutationFn: (pwd: string) => api.auth.loginAdmin(pwd),
+    mutationFn: () => api.auth.loginAdmin(password),
     onSuccess: (data) => login(data.token, data.user),
     onError: () => toast("Неверный пароль", "error"),
   });
 
-  // Password login (for users with password set)
-  const passwordMutation = useMutation({
-    mutationFn: () => api.auth.login(loginInput.trim(), password),
-    onSuccess: (data) => login(data.token, data.user),
-    onError: (e: Error) => toast(e.message, "error"),
-  });
-
-  // Passwordless select login
+  // Login by selecting from list + optional password
   const selectMutation = useMutation({
-    mutationFn: (userId: number) => api.auth.loginSelect(userId),
+    mutationFn: async () => {
+      const id = Number(selectedId);
+      const user = users.find(u => u.id === id);
+      if (!user) throw new Error("Выберите пользователя");
+
+      if (user.hasPassword) {
+        // Has password — use name-based login
+        if (!password) throw new Error("Введите пароль");
+        return api.auth.login(user.name, password);
+      } else {
+        // No password — passwordless select
+        return api.auth.loginSelect(id);
+      }
+    },
     onSuccess: (data) => login(data.token, data.user),
     onError: (e: Error) => toast(e.message, "error"),
   });
@@ -50,26 +52,23 @@ export default function Login() {
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!password) { toast("Введите пароль", "error"); return; }
-    adminMutation.mutate(password);
+    adminMutation.mutate();
   };
 
-  const handlePasswordLogin = (e: React.FormEvent) => {
+  const handleSelectLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginInput.trim() || !password) { toast("Введите имя и пароль", "error"); return; }
-    passwordMutation.mutate();
-  };
-
-  const handleSelectLogin = () => {
     if (!selectedId) { toast("Выберите пользователя", "error"); return; }
-    selectMutation.mutate(Number(selectedId));
+    selectMutation.mutate();
   };
 
   const switchTab = (t: Role) => {
     setTab(t);
-    setLoginInput("");
     setSelectedId("");
     setPassword("");
   };
+
+  const selectedUser = users.find(u => u.id === Number(selectedId));
+  const needsPassword = !!selectedUser?.hasPassword;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50">
@@ -99,7 +98,7 @@ export default function Login() {
           ))}
         </div>
 
-        {/* Admin login */}
+        {/* Admin */}
         {tab === "admin" && (
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div className="space-y-1.5">
@@ -108,9 +107,14 @@ export default function Login() {
                 Пароль администратора
               </label>
               <div className="relative">
-                <input type={showPwd ? "text" : "password"} value={password}
+                <input
+                  type={showPwd ? "text" : "password"}
+                  value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Введите пароль" className="input pr-10" autoFocus />
+                  placeholder="Введите пароль"
+                  className="input pr-10"
+                  autoFocus
+                />
                 <button type="button" onClick={() => setShowPwd(!showPwd)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -124,70 +128,59 @@ export default function Login() {
           </form>
         )}
 
-        {/* Manager / Operator login */}
+        {/* Operator / Manager */}
         {tab !== "admin" && (
-          <div className="space-y-5">
-            {/* Passwordless select (for users without password) */}
-            {usersWithoutPwd.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                  Выбор без пароля
-                </p>
-                <div className="flex gap-2">
-                  <select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="select flex-1">
-                    <option value="">— выберите —</option>
-                    {usersWithoutPwd.map(u => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                  <button onClick={handleSelectLogin}
-                    disabled={!selectedId || selectMutation.isPending}
-                    className="btn-primary px-5">
-                    {selectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Войти"}
-                  </button>
-                </div>
-              </div>
-            )}
+          <form onSubmit={handleSelectLogin} className="space-y-4">
+            {/* Select user from list */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">
+                {tab === "operator" ? "Выберите оператора" : "Выберите менеджера"}
+              </label>
+              <select
+                value={selectedId}
+                onChange={e => { setSelectedId(e.target.value); setPassword(""); }}
+                className="select"
+                disabled={isLoading}
+              >
+                <option value="">{isLoading ? "Загрузка..." : "— выберите —"}</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}{u.hasPassword ? " 🔒" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            {/* Divider if both modes exist */}
-            {usersWithoutPwd.length > 0 && usersWithPwd.length > 0 && (
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-gray-400">или с паролем</span>
-                </div>
-              </div>
-            )}
-
-            {/* Password login */}
-            {(usersWithPwd.length > 0 || usersWithoutPwd.length === 0) && (
-              <form onSubmit={handlePasswordLogin} className="space-y-3">
-                {usersWithoutPwd.length > 0 && (
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                    Вход с паролем
-                  </p>
-                )}
-                <input type="text" value={loginInput} onChange={e => setLoginInput(e.target.value)}
-                  placeholder="Имя или email" className="input" />
+            {/* Password field — shown only if selected user has a password */}
+            {needsPassword && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Пароль</label>
                 <div className="relative">
-                  <input type={showPwd ? "text" : "password"} value={password}
+                  <input
+                    type={showPwd ? "text" : "password"}
+                    value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder="Пароль" className="input pr-10" />
+                    placeholder="Введите пароль"
+                    className="input pr-10"
+                    autoFocus
+                  />
                   <button type="button" onClick={() => setShowPwd(!showPwd)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <button type="submit" disabled={!loginInput.trim() || !password || passwordMutation.isPending}
-                  className="btn-primary w-full">
-                  {passwordMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Войти
-                </button>
-              </form>
+              </div>
             )}
-          </div>
+
+            <button
+              type="submit"
+              disabled={!selectedId || (needsPassword && !password) || selectMutation.isPending}
+              className="btn-primary w-full"
+            >
+              {selectMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+              Войти
+            </button>
+          </form>
         )}
 
         <div className="text-center">
