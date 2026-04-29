@@ -201,7 +201,22 @@ router.get("/manager/dashboard", managerOnly, wrap(async (req, res) => {
     branchStats.push({ branch, operators: operatorStats });
   }
 
-  res.json({ month, branches: branchStats, categories, tariffs });
+  // Compute totals across all branches
+  const allOps = branchStats.flatMap(b => b.operators);
+  const totalSummary = categories.map(cat => {
+    const totalPlan = allOps.reduce((s, op) => {
+      const kpi = op.kpis.find((k: any) => k.category.id === cat.id);
+      return s + (kpi?.target ?? 0);
+    }, 0);
+    const totalFact = allOps.reduce((s, op) => {
+      const kpi = op.kpis.find((k: any) => k.category.id === cat.id);
+      return s + (kpi?.actual ?? 0);
+    }, 0);
+    const percent = totalPlan > 0 ? Math.round((totalFact / totalPlan) * 100) : 0;
+    return { categoryId: cat.id, categoryName: cat.name, unit: cat.unit, totalPlan, totalFact, percent };
+  });
+
+  res.json({ month, branches: branchStats, categories, tariffs, totalSummary });
 }));
 
 export default router;
