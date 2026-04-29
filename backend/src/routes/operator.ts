@@ -79,31 +79,48 @@ router.get("/operator/dashboard", requireAuth("operator"), wrap(async (req, res)
   });
   const totalRevenue = tariffStats.reduce((s, t) => s + t.revenue, 0);
 
-  // Team rank
+  // Team rank (overall + per category)
   let teamRank = 1, teamSize = 1;
+  const kpiRanks: { categoryId: number; rank: number }[] = [];
+
   if (branchRow) {
     const branchOpRows = await db.select({ id: usersTable.id })
       .from(branchOperatorsTable)
       .innerJoin(usersTable, eq(branchOperatorsTable.operatorId, usersTable.id))
       .where(eq(branchOperatorsTable.branchId, branchRow.id));
     teamSize = branchOpRows.length;
-    const ranks: { id: number; avg: number }[] = [];
+
+    // Collect stats for all operators
+    const allOpStats: { id: number; avg: number; byCategory: Record<number, number> }[] = [];
     for (const op of branchOpRows) {
       const t = await db.select().from(kpiTargetsTable).where(and(eq(kpiTargetsTable.operatorId, op.id), eq(kpiTargetsTable.month, month)));
       const e = await db.select().from(kpiEntriesTable).where(and(eq(kpiEntriesTable.operatorId, op.id), sql`${kpiEntriesTable.date} LIKE ${month + "%"}`));
-      const avgs = categories.map(cat => {
+      const byCategory: Record<number, number> = {};
+      const avgs: number[] = [];
+      for (const cat of categories) {
         const tgt = t.find(x => x.categoryId === cat.id)?.target ?? 0;
         const act = e.filter(x => x.categoryId === cat.id).reduce((s, x) => s + x.value, 0);
-        return tgt > 0 ? (act / tgt) * 100 : 0;
-      }).filter(v => v > 0);
-      ranks.push({ id: op.id, avg: avgs.length ? avgs.reduce((s, v) => s + v, 0) / avgs.length : 0 });
+        const pct = tgt > 0 ? (act / tgt) * 100 : 0;
+        byCategory[cat.id] = pct;
+        if (tgt > 0) avgs.push(pct);
+      }
+      allOpStats.push({ id: op.id, avg: avgs.length ? avgs.reduce((s, v) => s + v, 0) / avgs.length : 0, byCategory });
     }
-    ranks.sort((a, b) => b.avg - a.avg);
-    const idx = ranks.findIndex(r => r.id === operatorId);
+
+    // Overall rank
+    allOpStats.sort((a, b) => b.avg - a.avg);
+    const idx = allOpStats.findIndex(r => r.id === operatorId);
     teamRank = idx >= 0 ? idx + 1 : 1;
+
+    // Per-category rank
+    for (const cat of categories) {
+      const sorted = [...allOpStats].sort((a, b) => (b.byCategory[cat.id] ?? 0) - (a.byCategory[cat.id] ?? 0));
+      const catIdx = sorted.findIndex(r => r.id === operatorId);
+      kpiRanks.push({ categoryId: cat.id, rank: catIdx >= 0 ? catIdx + 1 : teamSize });
+    }
   }
 
-  res.json({ operator, branch: branchRow ?? null, month, kpis, tariffStats, totalRevenue, daysLeft: dl, teamRank, teamSize });
+  res.json({ operator, branch: branchRow ?? null, month, kpis, tariffStats, totalRevenue, daysLeft: dl, teamRank, teamSize, kpiRanks });
 }));
 
 // GET /operator/entries?month=
