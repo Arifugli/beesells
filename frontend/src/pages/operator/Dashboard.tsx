@@ -161,9 +161,24 @@ export default function OperatorDashboard() {
                 <ComparisonBadge current={avgPercent} previous={compareAvg} />
               )}
             </div>
-            <p className="text-xs text-gray-400">
-              Место #{data.teamRank} из {data.teamSize} операторов
+            {/* Overall rank */}
+            <p className="text-xs font-medium text-gray-600 mb-2">
+              🏆 Место #{data.teamRank} из {data.teamSize} (общий)
             </p>
+            {/* Per-KPI ranks */}
+            {data.kpiRanks && data.kpiRanks.length > 0 && (
+              <div className="space-y-1 border-t border-gray-200 pt-2 mt-2">
+                {data.kpiRanks.map(kr => {
+                  const cat = data.kpis.find(k => k.category.id === kr.categoryId);
+                  if (!cat || cat.target === 0) return null;
+                  return (
+                    <p key={kr.categoryId} className="text-xs text-gray-500">
+                      #{kr.rank} из {data.teamSize} — {cat.category.name}
+                    </p>
+                  );
+                })}
+              </div>
+            )}
             {isCurrentMonth ? (
               <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-500">
                 <TrendingUp className="w-3.5 h-3.5" />
