@@ -39,13 +39,10 @@ export default function ManagerDashboard() {
   const behindOps = allOperators.filter(o => o.avgPercent < 65).length;
   const avgTeam = totalOps > 0 ? Math.round(allOperators.reduce((s, o) => s + o.avgPercent, 0) / totalOps) : 0;
 
-  // Comparison aggregates
   const compareOps = compareData?.branches.flatMap(b => b.operators) ?? [];
   const compareBehind = compareOps.filter(o => o.avgPercent < 65).length;
   const compareAvg = compareOps.length > 0
     ? Math.round(compareOps.reduce((s, o) => s + o.avgPercent, 0) / compareOps.length) : 0;
-
-  // Prev total per operator lookup (for per-row comparison)
   const compareOpMap = new Map(compareOps.map(o => [o.operator.id, o]));
 
   return (
@@ -58,22 +55,14 @@ export default function ManagerDashboard() {
         <div className="flex items-center gap-2 flex-wrap">
           <MonthPicker value={month} onChange={setMonth} />
           <button
-            onClick={() => {
-              if (!compareMode) setCompareWith(prevMonth(month));
-              setCompareMode(!compareMode);
-            }}
+            onClick={() => { if (!compareMode) setCompareWith(prevMonth(month)); setCompareMode(!compareMode); }}
             className={`h-9 px-3 inline-flex items-center gap-1.5 rounded-lg border text-sm font-medium transition-all ${
-              compareMode
-                ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+              compareMode ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
             }`}
           >
-            <GitCompare className="w-4 h-4" />
-            Сравнение
+            <GitCompare className="w-4 h-4" />Сравнение
           </button>
-          {compareMode && (
-            <MonthPicker value={compareWith} onChange={setCompareWith} />
-          )}
+          {compareMode && <MonthPicker value={compareWith} onChange={setCompareWith} />}
         </div>
       </div>
 
@@ -86,9 +75,7 @@ export default function ManagerDashboard() {
           </div>
           <div className="flex items-baseline gap-2">
             <div className="text-2xl font-bold">{totalOps}</div>
-            {compareMode && compareData && (
-              <ComparisonBadge current={totalOps} previous={compareOps.length} absolute />
-            )}
+            {compareMode && compareData && <ComparisonBadge current={totalOps} previous={compareOps.length} absolute />}
           </div>
           <p className="text-xs text-gray-400 mt-1">в {data.branches.length} отд.</p>
         </div>
@@ -99,16 +86,12 @@ export default function ManagerDashboard() {
           </div>
           <div className="flex items-baseline gap-2">
             <div className="text-2xl font-bold">{avgTeam}%</div>
-            {compareMode && compareData && (
-              <ComparisonBadge current={avgTeam} previous={compareAvg} />
-            )}
+            {compareMode && compareData && <ComparisonBadge current={avgTeam} previous={compareAvg} />}
           </div>
           <div className="progress-bar mt-2">
             <div className="progress-fill" style={{ width: `${Math.min(avgTeam,100)}%`, background: "hsl(var(--primary))" }} />
           </div>
-          {compareMode && compareData && (
-            <p className="text-xs text-gray-400 mt-2 capitalize">{formatMonth(compareWith)}: {compareAvg}%</p>
-          )}
+          {compareMode && compareData && <p className="text-xs text-gray-400 mt-2 capitalize">{formatMonth(compareWith)}: {compareAvg}%</p>}
         </div>
         <div className="card p-5 shadow-sm" style={{ borderLeft: "4px solid hsl(var(--destructive))" }}>
           <div className="flex items-center justify-between mb-2">
@@ -117,96 +100,102 @@ export default function ManagerDashboard() {
           </div>
           <div className="flex items-baseline gap-2">
             <div className="text-2xl font-bold text-red-500">{behindOps}</div>
-            {compareMode && compareData && (
-              <ComparisonBadge current={compareBehind} previous={behindOps} absolute />
-            )}
+            {compareMode && compareData && <ComparisonBadge current={compareBehind} previous={behindOps} absolute />}
           </div>
           <p className="text-xs text-gray-400 mt-1">менее 65% выполнения</p>
         </div>
       </div>
 
       {/* Per-branch breakdown */}
-      {data.branches.map(bs => (
-        <div key={bs.branch.id} className="card shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-gray-400" />
-            <h2 className="font-semibold">{bs.branch.name}</h2>
-            <span className="badge badge-muted ml-auto">{bs.operators.length} операторов</span>
-          </div>
+      {data.branches.map(bs => {
+        // Only show categories where at least one operator has a non-zero target
+        const visibleCategories = data.categories.filter(cat =>
+          bs.operators.some(op => {
+            const kpi = op.kpis.find(k => k.category.id === cat.id);
+            return kpi && kpi.target > 0;
+          })
+        );
 
-          {bs.operators.length === 0 ? (
-            <div className="py-10 text-center text-gray-400 text-sm">Нет операторов</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th className="w-10">№</th>
-                    <th>Оператор</th>
-                    {data.categories.map(c => (
-                      <th key={c.id} className="text-right whitespace-nowrap">{c.name}</th>
-                    ))}
-                    <th className="text-right">Выручка</th>
-                    <th className="text-right">Avg %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bs.operators.map(op => {
-                    const behind = op.avgPercent < 65;
-                    return (
-                      <tr key={op.operator.id} className={behind ? "bg-red-50/50" : ""}>
-                        <td className="text-gray-400 font-mono text-center">
-                          {op.rank === 1 ? "🥇" : op.rank === 2 ? "🥈" : op.rank === 3 ? "🥉" : op.rank}
-                        </td>
-                        <td>
-                          <span className="font-medium whitespace-nowrap">{op.operator.name}</span>
-                          {behind && <AlertTriangle className="inline w-3 h-3 text-red-400 ml-1.5" />}
-                        </td>
-                        {data.categories.map((c, ci) => {
-                          const kpi = op.kpis.find(k => k.category.id === c.id);
-                          return (
-                            <td key={c.id} className="text-right">
-                              {kpi ? (
-                                <div>
-                                  <span className="font-medium">{kpi.actual}</span>
-                                  {kpi.target > 0 && <span className="text-gray-400 text-xs ml-1">/{kpi.target}</span>}
-                                  {kpi.target > 0 && (
-                                    <div className="progress-bar mt-1 w-16 ml-auto">
+        return (
+          <div key={bs.branch.id} className="card shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-gray-400" />
+              <h2 className="font-semibold">{bs.branch.name}</h2>
+              <span className="badge badge-muted ml-auto">{bs.operators.length} операторов</span>
+            </div>
+
+            {bs.operators.length === 0 ? (
+              <div className="py-10 text-center text-gray-400 text-sm">Нет операторов</div>
+            ) : (
+              <div style={{ overflowX: visibleCategories.length > 3 ? "auto" : "visible" }}>
+                <table className="table" style={{ minWidth: 0 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40 }}>№</th>
+                      <th style={{ minWidth: 140 }}>Оператор</th>
+                      {visibleCategories.map(c => (
+                        <th key={c.id} className="text-right" style={{ minWidth: 110, maxWidth: 160 }}>
+                          <span className="block truncate" title={c.name}>{c.name}</span>
+                        </th>
+                      ))}
+                      <th className="text-right" style={{ minWidth: 80 }}>Avg %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bs.operators.map(op => {
+                      const behind = op.avgPercent < 65;
+                      return (
+                        <tr key={op.operator.id} className={behind ? "bg-red-50/50" : ""}>
+                          <td className="text-gray-400 font-mono text-center text-sm">
+                            {op.rank === 1 ? "🥇" : op.rank === 2 ? "🥈" : op.rank === 3 ? "🥉" : op.rank}
+                          </td>
+                          <td>
+                            <span className="font-medium">{op.operator.name}</span>
+                            {behind && <AlertTriangle className="inline w-3 h-3 text-red-400 ml-1" />}
+                          </td>
+                          {visibleCategories.map((c, ci) => {
+                            const kpi = op.kpis.find(k => k.category.id === c.id);
+                            return (
+                              <td key={c.id} className="text-right">
+                                {kpi && kpi.target > 0 ? (
+                                  <div>
+                                    <span className="font-medium text-sm">{kpi.actual}</span>
+                                    <span className="text-gray-400 text-xs ml-1">/{kpi.target}</span>
+                                    <div className="progress-bar mt-1" style={{ width: 64, marginLeft: "auto" }}>
                                       <div className="progress-fill" style={{ width: `${Math.min(kpi.percent,100)}%`, background: COLORS[ci % COLORS.length] }} />
                                     </div>
-                                  )}
-                                </div>
-                              ) : <span className="text-gray-300">—</span>}
-                            </td>
-                          );
-                        })}
-                        <td className="text-right">
-                          <div className="text-sm font-semibold text-emerald-600">
-                            {op.totalRevenue > 0 ? op.totalRevenue.toLocaleString("ru-RU") + " сум" : "—"}
-                          </div>
-                        </td>
-                        <td className="text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <span className={`font-bold ${behind ? "text-red-500" : "text-gray-900"}`}>
-                              {op.avgPercent}%
-                            </span>
-                            {compareMode && compareOpMap.get(op.operator.id) && (
-                              <ComparisonBadge
-                                current={op.avgPercent}
-                                previous={compareOpMap.get(op.operator.id)!.avgPercent}
-                              />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      ))}
+                                  </div>
+                                ) : kpi ? (
+                                  <span className="text-sm text-gray-500">{kpi.actual}</span>
+                                ) : (
+                                  <span className="text-gray-300">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className="text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className={`font-bold text-sm ${behind ? "text-red-500" : "text-gray-900"}`}>
+                                {op.avgPercent}%
+                              </span>
+                              {compareMode && compareOpMap.get(op.operator.id) && (
+                                <ComparisonBadge
+                                  current={op.avgPercent}
+                                  previous={compareOpMap.get(op.operator.id)!.avgPercent}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {data.branches.length === 0 && (
         <div className="card p-12 text-center text-gray-400">
