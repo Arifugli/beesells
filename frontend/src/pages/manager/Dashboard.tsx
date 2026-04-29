@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, type KpiTotalSummary } from "@/lib/api";
 import { currentMonth, formatMonth, prevMonth } from "@/lib/utils";
 import { AlertTriangle, Building2, Users, TrendingUp, GitCompare } from "lucide-react";
 import { MonthPicker } from "@/components/ui/MonthPicker";
@@ -105,6 +105,46 @@ export default function ManagerDashboard() {
           <p className="text-xs text-gray-400 mt-1">менее 65% выполнения</p>
         </div>
       </div>
+
+      {/* Total KPI Summary */}
+      {data.totalSummary && data.totalSummary.filter(t => t.totalPlan > 0).length > 0 && (
+        <div className="card shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="font-semibold">Итого по всем операторам</h2>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {data.totalSummary.filter(t => t.totalPlan > 0).map(t => (
+              <div key={t.categoryId} className="px-6 py-3 flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{t.categoryName}</p>
+                </div>
+                <div className="flex items-center gap-6 text-sm shrink-0">
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400">План</p>
+                    <p className="font-semibold">{t.totalPlan.toLocaleString("ru-RU")} {t.unit}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400">Факт</p>
+                    <p className="font-semibold">{t.totalFact.toLocaleString("ru-RU")} {t.unit}</p>
+                  </div>
+                  <div className="text-right min-w-[64px]">
+                    <p className="text-xs text-gray-400">Выполнение</p>
+                    <p className={`font-bold text-base ${t.percent >= 100 ? "text-emerald-600" : t.percent >= 65 ? "text-indigo-600" : "text-red-500"}`}>
+                      {t.percent}%
+                    </p>
+                    <div className="progress-bar mt-1 w-16 ml-auto">
+                      <div className="progress-fill" style={{
+                        width: `${Math.min(t.percent, 100)}%`,
+                        background: t.percent >= 100 ? "#10b981" : t.percent >= 65 ? "hsl(237 73% 61%)" : "#ef4444"
+                      }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Per-branch breakdown */}
       {data.branches.map(bs => {
