@@ -38,8 +38,10 @@ export interface TariffSale { id: number; operatorId: number; tariffId: number; 
 export interface TariffStat { tariff: Tariff; target: number; quantity: number; revenue: number; percent: number; neededPerDay: number; dailySales: TariffSale[]; }
 export interface OperatorStats { operator: User; kpis: KpiStat[]; tariffStats: TariffStat[]; totalRevenue: number; avgPercent: number; rank?: number; }
 export interface BranchStats { branch: Branch; operators: OperatorStats[]; }
-export interface OperatorDashboard { operator: User; branch: Branch | null; month: string; kpis: KpiStat[]; tariffStats: TariffStat[]; totalRevenue: number; daysLeft: number; teamRank: number; teamSize: number; }
-export interface ManagerDashboard { month: string; branches: BranchStats[]; categories: KpiCategory[]; tariffs: Tariff[]; }
+export interface KpiRank { categoryId: number; rank: number; }
+export interface OperatorDashboard { operator: User; branch: Branch | null; month: string; kpis: KpiStat[]; tariffStats: TariffStat[]; totalRevenue: number; daysLeft: number; teamRank: number; teamSize: number; kpiRanks: KpiRank[]; }
+export interface KpiTotalSummary { categoryId: number; categoryName: string; unit: string; totalPlan: number; totalFact: number; percent: number; }
+export interface ManagerDashboard { month: string; branches: BranchStats[]; categories: KpiCategory[]; tariffs: Tariff[]; totalSummary: KpiTotalSummary[]; }
 export interface AuthResponse { token: string; user: User; }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
