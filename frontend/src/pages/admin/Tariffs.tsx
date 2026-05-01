@@ -4,7 +4,7 @@ import { api, type Tariff } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Plus, Edit2, Trash2, Loader2, Tag, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Edit2, Trash2, Loader2, Tag, ToggleLeft, ToggleRight, FileSpreadsheet, Check } from "lucide-react";
 
 function formatPrice(p: number) {
   return p.toLocaleString("ru-RU") + " сум";
