@@ -3,7 +3,7 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import { db } from "../db.js";
 import {
-  usersTable, kpiCategoriesTable, kpiTargetsTable, kpiEntriesTable
+  usersTable, kpiCategoriesTable, kpiTargetsTable, kpiEntriesTable, tariffsTable
 } from "../schema.js";
 import { eq, and, ilike, or } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth.js";
@@ -176,6 +176,51 @@ router.post("/import/confirm", canImport, wrap(async (req, res) => {
   }
 
   res.json({ ok: true, plansSaved, factsSaved });
+}));
+
+// POST /import/tariffs — parse Excel file and create/update tariffs
+router.post("/import/tariffs", canImport, upload.single("file"), wrap(async (req, res) => {
+  if (!req.file) { res.status(400).json({ error: "Файл не загружен" }); return; }
+
+  const wb = XLSX.read(req.file.buffer, { type: "buffer" });
+  const results: { name: string; price: number; action: "created" | "updated" | "skipped" }[] = [];
+
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: null });
+
+    for (const row of rows) {
+      if (!row || row.length < 2) continue;
+
+      // Look for rows with string name + numeric price anywhere in row
+      let name: string | null = null;
+      let price: number | null = null;
+
+      for (const cell of row) {
+        if (typeof cell === "string" && cell.trim().length > 1) {
+          if (!name) name = cell.trim();
+        } else if (typeof cell === "number" && cell > 0) {
+          if (!price) price = cell;
+        }
+      }
+
+      if (!name || price === null) continue;
+      // Skip header-like rows
+      if (name.toLowerCase().includes("назван") || name.toLowerCase().includes("тариф") && price < 100) continue;
+
+      // Check if tariff already exists by name
+      const existing = await db.select().from(tariffsTable).where(eq(tariffsTable.name, name));
+      if (existing.length > 0) {
+        await db.update(tariffsTable).set({ price: Math.round(price) }).where(eq(tariffsTable.id, existing[0].id));
+        results.push({ name, price: Math.round(price), action: "updated" });
+      } else {
+        await db.insert(tariffsTable).values({ name, price: Math.round(price) });
+        results.push({ name, price: Math.round(price), action: "created" });
+      }
+    }
+  }
+
+  res.json({ ok: true, results });
 }));
 
 export default router;
