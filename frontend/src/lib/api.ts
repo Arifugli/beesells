@@ -99,4 +99,18 @@ export const api = {
   archive: {
     months: () => request<string[]>("/archive/months"),
   },
+  import: {
+    tariffs: async (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const API_BASE = (typeof import.meta !== "undefined" ? (import.meta as any).env?.VITE_API_URL : "") ?? "";
+      const res = await fetch(`${API_BASE}/api/import/tariffs`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
+      return res.json() as Promise<{ ok: boolean; results: { name: string; price: number; action: string }[] }>;
+    },
+  },
 };
