@@ -5,12 +5,12 @@ import { db } from "../db.js";
 import {
   usersTable, kpiCategoriesTable, kpiTargetsTable, kpiEntriesTable, tariffsTable
 } from "../schema.js";
-import { eq, and, ilike, or } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth.js";
 import { z } from "zod";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const canImport = requireAuth("admin", "manager");
 
 function wrap(fn: (req: any, res: any) => Promise<void>) {
@@ -23,50 +23,166 @@ function wrap(fn: (req: any, res: any) => Promise<void>) {
   };
 }
 
+// Normalize: lowercase, trim, collapse spaces, remove extra punctuation
 function norm(s: string): string {
-  return s.toLowerCase().replace(/\s+/g, " ").trim();
+  return s.toLowerCase().replace(/[«»"'()\[\]]/g, "").replace(/\s+/g, " ").trim();
 }
 
+// Calculate similarity: what % of words from needle appear in haystack
+function wordSimilarity(a: string, b: string): number {
+  const wa = norm(a).split(" ").filter(w => w.length > 2);
+  const nb = norm(b);
+  if (wa.length === 0) return 0;
+  const matched = wa.filter(w => nb.includes(w)).length;
+  return matched / wa.length;
+}
+
+// Extract ФИО from employee row: remove job title parts
+function extractPersonName(raw: string): string {
+  // Remove common job title words
+  const cleaned = raw
+    .replace(/^(Старший|специалист|руководитель|менеджер|директор|начальник|заместитель)/gi, "")
+    .replace(/специалист продаж и обслуживания/gi, "")
+    .replace(/\(Е\d+\)/gi, "")
+    .replace(/\(М\)/gi, "")
+    .replace(/ОПиО/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned;
+}
+
+// Is this row an employee name row?
+// Employee rows: col A = long string with name, col B = null/empty
 function isNameRow(row: any[]): boolean {
   const a = row[0], b = row[1];
   return (
-    typeof a === "string" && a.trim().length > 3 &&
+    typeof a === "string" &&
+    a.trim().length > 5 &&
     (b === null || b === undefined || b === "")
   );
 }
 
+// Is this a KPI data row?
+// KPI rows: col A = KPI name, col B = unit (шт, %, мин, сум)
+const KPI_UNITS = ["шт", "шт.", "%", "мин", "сум", "млн", "раз", "звонок"];
 function isKpiRow(row: any[]): boolean {
   const a = row[0], b = row[1];
   return (
-    typeof a === "string" && a.trim().length > 3 &&
+    typeof a === "string" &&
+    a.trim().length > 3 &&
     typeof b === "string" &&
-    ["шт", "%", "мин", "сум", "шт."].includes(b.trim().toLowerCase())
+    KPI_UNITS.includes(b.trim().toLowerCase())
   );
 }
 
-function parseSheet(ws: XLSX.WorkSheet) {
+function parseSheet(ws: XLSX.WorkSheet): {
+  employees: Array<{ rawName: string; cleanName: string; kpis: Array<{ name: string; unit: string; plan: number | null; fact: number | null }> }>;
+} {
   const data = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: null });
   const employees: any[] = [];
-  const sheetKpis = new Set<string>();
   let current: any = null;
 
   for (const row of data) {
     if (!row || row.every((v: any) => v === null || v === undefined)) continue;
+
     if (isNameRow(row)) {
       if (current) employees.push(current);
-      current = { rawName: String(row[0]).replace(/\s+/g, " ").trim(), kpis: [] };
+      const rawName = String(row[0]).replace(/\s+/g, " ").trim();
+      current = {
+        rawName,
+        cleanName: extractPersonName(rawName),
+        kpis: [],
+      };
     } else if (isKpiRow(row) && current) {
-      const name = String(row[0]).trim();
-      const unit = String(row[1]).trim();
+      // Plan is in column D (index 3), Fact is in column E (index 4)
       const plan = typeof row[3] === "number" ? row[3] : null;
       const fact = typeof row[4] === "number" ? row[4] : null;
-      current.kpis.push({ name, unit, plan, fact });
-      sheetKpis.add(name);
+      current.kpis.push({
+        name: String(row[0]).trim(),
+        unit: String(row[1]).trim(),
+        plan,
+        fact,
+      });
     }
   }
   if (current) employees.push(current);
-  return { employees, sheetKpis };
+  return { employees };
 }
+
+// Match employee to operator in DB
+function matchOperator(emp: { rawName: string; cleanName: string }, operators: { id: number; name: string }[]): { id: number; name: string } | null {
+  const raw = norm(emp.rawName);
+  const clean = norm(emp.cleanName);
+
+  // 1. Exact match on full raw name
+  let match = operators.find(op => norm(op.name) === raw);
+  if (match) return match;
+
+  // 2. Exact match on cleaned name
+  match = operators.find(op => norm(op.name) === clean);
+  if (match) return match;
+
+  // 3. Raw contains operator name or operator name contains raw
+  match = operators.find(op => {
+    const opNorm = norm(op.name);
+    return raw.includes(opNorm) || opNorm.includes(raw);
+  });
+  if (match) return match;
+
+  // 4. Word similarity — all parts of operator name appear in raw
+  match = operators.find(op => {
+    const opWords = norm(op.name).split(" ").filter(w => w.length > 2);
+    if (opWords.length === 0) return false;
+    return opWords.every(w => raw.includes(w));
+  });
+  if (match) return match;
+
+  // 5. High word similarity (>= 60% of words match)
+  let bestScore = 0;
+  let bestMatch: typeof match = undefined;
+  for (const op of operators) {
+    const score = Math.max(
+      wordSimilarity(op.name, emp.rawName),
+      wordSimilarity(emp.cleanName, op.name),
+    );
+    if (score > bestScore) { bestScore = score; bestMatch = op; }
+  }
+  if (bestScore >= 0.6) return bestMatch ?? null;
+
+  return null;
+}
+
+// Match KPI name to category in DB
+function matchCategory(kpiName: string, categories: { id: number; name: string; unit: string }[]): { id: number; name: string } | null {
+  const nKpi = norm(kpiName);
+
+  // 1. Exact
+  let match = categories.find(c => norm(c.name) === nKpi);
+  if (match) return match;
+
+  // 2. Contains each other
+  match = categories.find(c => {
+    const nCat = norm(c.name);
+    return nKpi.includes(nCat) || nCat.includes(nKpi);
+  });
+  if (match) return match;
+
+  // 3. Word similarity
+  let bestScore = 0;
+  let bestMatch: typeof match = undefined;
+  for (const cat of categories) {
+    const score = Math.max(
+      wordSimilarity(cat.name, kpiName),
+      wordSimilarity(kpiName, cat.name),
+    );
+    if (score > bestScore) { bestScore = score; bestMatch = cat; }
+  }
+  if (bestScore >= 0.5) return bestMatch ?? null;
+
+  return null;
+}
+
+// ── Routes ────────────────────────────────────────────────────────────────────
 
 // POST /import/sheets
 router.post("/import/sheets", canImport, upload.single("file"), wrap(async (req, res) => {
@@ -91,30 +207,22 @@ router.post("/import/preview", canImport, upload.single("file"), wrap(async (req
   const allCategories = await db.select().from(kpiCategoriesTable);
 
   const matched = employees.map(emp => {
-    const nName = norm(emp.rawName);
-    let match = allOperators.find(op => norm(op.name) === nName);
-    if (!match) {
-      match = allOperators.find(op => {
-        const opNorm = norm(op.name);
-        const nameParts = opNorm.split(" ");
-        return nameParts.filter(p => p.length > 2).every(p => nName.includes(p));
-      });
-    }
+    const opMatch = matchOperator(emp, allOperators);
 
     const kpisMatched = emp.kpis.map((kpi: any) => {
-      const nKpi = norm(kpi.name);
-      const catMatch = allCategories.find(cat => {
-        const nCat = norm(cat.name);
-        return nCat === nKpi || nKpi.includes(nCat) || nCat.split(" ").slice(0, 3).every((w: string) => w.length < 3 || nKpi.includes(w));
-      });
-      return { ...kpi, categoryId: catMatch?.id ?? null, categoryName: catMatch?.name ?? null };
+      const catMatch = matchCategory(kpi.name, allCategories);
+      return {
+        ...kpi,
+        categoryId: catMatch?.id ?? null,
+        categoryName: catMatch?.name ?? null,
+      };
     });
 
     return {
       rawName: emp.rawName,
-      operatorId: match?.id ?? null,
-      operatorName: match?.name ?? null,
-      matched: !!match,
+      operatorId: opMatch?.id ?? null,
+      operatorName: opMatch?.name ?? null,
+      matched: !!opMatch,
       kpis: kpisMatched,
     };
   });
@@ -178,12 +286,12 @@ router.post("/import/confirm", canImport, wrap(async (req, res) => {
   res.json({ ok: true, plansSaved, factsSaved });
 }));
 
-// POST /import/tariffs — parse Excel file and create/update tariffs
+// POST /import/tariffs
 router.post("/import/tariffs", canImport, upload.single("file"), wrap(async (req, res) => {
   if (!req.file) { res.status(400).json({ error: "Файл не загружен" }); return; }
 
   const wb = XLSX.read(req.file.buffer, { type: "buffer" });
-  const results: { name: string; price: number; action: "created" | "updated" | "skipped" }[] = [];
+  const results: { name: string; price: number; action: "created" | "updated" }[] = [];
 
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName];
@@ -191,24 +299,15 @@ router.post("/import/tariffs", canImport, upload.single("file"), wrap(async (req
 
     for (const row of rows) {
       if (!row || row.length < 2) continue;
-
-      // Look for rows with string name + numeric price anywhere in row
       let name: string | null = null;
       let price: number | null = null;
-
       for (const cell of row) {
-        if (typeof cell === "string" && cell.trim().length > 1) {
-          if (!name) name = cell.trim();
-        } else if (typeof cell === "number" && cell > 0) {
-          if (!price) price = cell;
-        }
+        if (typeof cell === "string" && cell.trim().length > 1 && !name) name = cell.trim();
+        else if (typeof cell === "number" && cell > 0 && !price) price = cell;
       }
-
       if (!name || price === null) continue;
-      // Skip header-like rows
-      if (name.toLowerCase().includes("назван") || name.toLowerCase().includes("тариф") && price < 100) continue;
+      if (norm(name).includes("назван") || norm(name).includes("тариф")) continue;
 
-      // Check if tariff already exists by name
       const existing = await db.select().from(tariffsTable).where(eq(tariffsTable.name, name));
       if (existing.length > 0) {
         await db.update(tariffsTable).set({ price: Math.round(price) }).where(eq(tariffsTable.id, existing[0].id));
