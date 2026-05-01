@@ -139,7 +139,7 @@ function matchOperator(emp: { rawName: string; cleanName: string }, operators: {
 
   // 5. High word similarity (>= 60% of words match)
   let bestScore = 0;
-  let bestMatch: typeof match = undefined;
+  let bestMatch: { id: number; name: string } | null = null;
   for (const op of operators) {
     const score = Math.max(
       wordSimilarity(op.name, emp.rawName),
@@ -147,7 +147,7 @@ function matchOperator(emp: { rawName: string; cleanName: string }, operators: {
     );
     if (score > bestScore) { bestScore = score; bestMatch = op; }
   }
-  if (bestScore >= 0.6) return bestMatch ?? null;
+  if (bestScore >= 0.6) return bestMatch;
 
   return null;
 }
@@ -169,7 +169,7 @@ function matchCategory(kpiName: string, categories: { id: number; name: string; 
 
   // 3. Word similarity
   let bestScore = 0;
-  let bestMatch: typeof match = undefined;
+  let bestMatch: { id: number; name: string; unit: string } | null = null;
   for (const cat of categories) {
     const score = Math.max(
       wordSimilarity(cat.name, kpiName),
@@ -177,7 +177,7 @@ function matchCategory(kpiName: string, categories: { id: number; name: string; 
     );
     if (score > bestScore) { bestScore = score; bestMatch = cat; }
   }
-  if (bestScore >= 0.5) return bestMatch ?? null;
+  if (bestScore >= 0.5) return bestMatch;
 
   return null;
 }
