@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Tariff } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
@@ -18,11 +18,23 @@ export default function AdminTariffs() {
   const updateMutation = useMutation({ mutationFn: ({ id, ...d }: { id: number } & Partial<Tariff>) => api.admin.updateTariff(id, d) });
   const deleteMutation = useMutation({ mutationFn: (id: number) => api.admin.deleteTariff(id) });
 
+  const importMutation = useMutation({
+    mutationFn: (file: File) => api.import.tariffs(file),
+    onSuccess: (data) => {
+      refresh();
+      setImportResult(data.results);
+      toast(`Импортировано ${data.results.length} тарифов`, "success");
+    },
+    onError: (e: Error) => toast(e.message, "error"),
+  });
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [formName, setFormName] = useState("");
   const [formPrice, setFormPrice] = useState("");
+  const [importResult, setImportResult] = useState<{ name: string; price: number; action: string }[] | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin-tariffs"] });
 
@@ -70,9 +82,18 @@ export default function AdminTariffs() {
           <h1 className="text-3xl font-bold">Тарифы</h1>
           <p className="text-gray-500 text-sm mt-1">Создавайте тарифы с ценой — операторы будут фиксировать подключения по ним.</p>
         </div>
-        <button onClick={openAdd} className="btn-primary">
-          <Plus className="w-4 h-4" />Новый тариф
-        </button>
+        <div className="flex gap-2">
+          <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) { importMutation.mutate(f); if (importRef.current) importRef.current.value = ""; } }} />
+          <button onClick={() => importRef.current?.click()} disabled={importMutation.isPending}
+            className="btn-outline flex items-center gap-2">
+            {importMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+            Из Excel
+          </button>
+          <button onClick={openAdd} className="btn-primary">
+            <Plus className="w-4 h-4" />Новый тариф
+          </button>
+        </div>
       </div>
 
       <div className="card shadow-sm overflow-hidden">
@@ -128,6 +149,31 @@ export default function AdminTariffs() {
           </tbody>
         </table>
       </div>
+
+      {importResult && (
+        <div className="card p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-sm">Результат импорта</h3>
+            <button onClick={() => setImportResult(null)} className="btn-ghost text-xs">Закрыть</button>
+          </div>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {importResult.map((r, i) => (
+              <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-gray-50 last:border-0">
+                <div className="flex items-center gap-2">
+                  <Check className={`w-3.5 h-3.5 ${r.action === "created" ? "text-emerald-500" : "text-blue-500"}`} />
+                  <span>{r.name}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span>{r.price.toLocaleString("ru-RU")} сум</span>
+                  <span className={`badge ${r.action === "created" ? "badge-success" : "badge-primary"}`}>
+                    {r.action === "created" ? "Создан" : "Обновлён"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
         <p className="font-medium mb-1">💡 Как работают тарифы</p>
