@@ -1,14 +1,18 @@
-import { ReactNode, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useState } from "react";
+import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { Signal, LogOut, Menu, X, LayoutDashboard, Users, Building2, Tag, FileEdit, ShieldCheck, Wifi, FileUp } from "lucide-react";
+import {
+  LayoutDashboard, Users, Building2, Tag, FileEdit,
+  LogOut, Menu, X, Wifi, FileUp, ChevronRight
+} from "lucide-react";
 
-export function AppLayout({ children }: { children: ReactNode }) {
+export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
-  const [open, setOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  if (!user) return <>{children}</>;
+  if (!user) return null;
 
   const navItems = user.role === "admin" ? [
     { label: "Отделения", href: "/admin/branches", icon: Building2 },
@@ -17,61 +21,66 @@ export function AppLayout({ children }: { children: ReactNode }) {
     { label: "Тарифы", href: "/admin/tariffs", icon: Wifi },
     { label: "Импорт Excel", href: "/import", icon: FileUp },
   ] : user.role === "manager" ? [
-    { label: "Обзор команды", href: "/manager", icon: LayoutDashboard },
+    { label: "Дашборд", href: "/manager", icon: LayoutDashboard },
     { label: "Операторы", href: "/manager/operators", icon: Users },
     { label: "Импорт Excel", href: "/import", icon: FileUp },
   ] : [
-    { label: "Мои показатели", href: "/operator", icon: LayoutDashboard },
-    { label: "Записать KPI", href: "/operator/log", icon: FileEdit },
+    { label: "Мой дашборд", href: "/operator", icon: LayoutDashboard },
+    { label: "Записать данные", href: "/operator/log", icon: FileEdit },
   ];
 
-  const roleLabel = user.role === "admin" ? "Администратор" : user.role === "manager" ? "Менеджер" : "Оператор";
-  const roleColor = user.role === "admin" ? "badge-danger" : user.role === "manager" ? "badge-primary" : "badge-muted";
-
-  const sidebar = (
+  const Sidebar = () => (
     <div className="flex flex-col h-full">
-      <div className="h-16 flex items-center px-6 border-b border-gray-100">
-        <div className="flex items-center gap-2 font-bold text-lg" style={{ color: "hsl(var(--primary))" }}>
-          <Signal className="w-5 h-5" />
-          <span>TelecomSales</span>
+      {/* Logo */}
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-[#2A2A2A]">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: "#FFD200" }}>
+          <span className="text-black font-black text-xs leading-none">bee</span>
+        </div>
+        <div>
+          <p className="font-bold text-white text-sm leading-tight">BeeSells</p>
+          <p className="text-[#6B6B6B] text-xs leading-tight capitalize">{
+            user.role === "admin" ? "Администратор"
+            : user.role === "manager" ? "Менеджер"
+            : "Оператор"
+          }</p>
         </div>
       </div>
 
-      <div className="px-4 py-4 border-b border-gray-100">
-        <div className="flex items-center gap-3 px-2">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0"
-            style={{ background: "hsl(var(--primary))" }}>
-            {user.name.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{user.name}</p>
-            <span className={`badge ${roleColor} text-xs mt-0.5`}>
-              {user.role === "admin" && <ShieldCheck className="w-3 h-3" />}
-              {roleLabel}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {navItems.map(item => {
-          const active = location === item.href || location.startsWith(item.href + "/");
-          const Icon = item.icon;
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        {navItems.map(({ label, href, icon: Icon }) => {
+          const active = location === href || location.startsWith(href + "/");
           return (
-            <Link key={item.href} href={item.href}>
-              <div onClick={() => setOpen(false)} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${
-                active ? "text-white shadow-sm" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-              }`} style={active ? { background: "hsl(var(--primary))" } : {}}>
-                <Icon className="w-4 h-4 shrink-0" />
-                {item.label}
-              </div>
+            <Link key={href} href={href}
+              onClick={() => setSidebarOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
+                active
+                  ? "bg-[#FFD200] text-[#1A1A1A]"
+                  : "text-[#BBBBBB] hover:bg-[#2A2A2A] hover:text-white"
+              }`}
+            >
+              <Icon className={`w-4 h-4 shrink-0 ${active ? "text-[#1A1A1A]" : "text-[#888]"}`} />
+              <span className="flex-1">{label}</span>
+              {active && <ChevronRight className="w-3.5 h-3.5 opacity-60" />}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-3 border-t border-gray-100">
-        <button onClick={logout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all">
+      {/* User + Logout */}
+      <div className="px-3 py-4 border-t border-[#2A2A2A]">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg mb-1">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold text-sm"
+            style={{ background: "#FFD200", color: "#1A1A1A" }}>
+            {user.name.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white text-sm font-medium truncate">{user.name}</p>
+          </div>
+        </div>
+        <button onClick={logout}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#888] hover:bg-[#2A2A2A] hover:text-red-400 transition-all">
           <LogOut className="w-4 h-4" />
           Выйти
         </button>
@@ -80,36 +89,44 @@ export function AppLayout({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
+    <div className="flex h-screen bg-[#F5F5F5]">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-60 bg-white border-r border-gray-100 flex-col shrink-0 sticky top-0 h-screen">
-        {sidebar}
+      <aside className="hidden md:flex flex-col w-56 shrink-0 bg-[#1A1A1A]">
+        <Sidebar />
       </aside>
 
-      {/* Mobile header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 bg-white border-b border-gray-100 flex items-center px-4 gap-3">
-        <button onClick={() => setOpen(true)} className="btn-ghost"><Menu className="w-5 h-5" /></button>
-        <div className="flex items-center gap-2 font-bold" style={{ color: "hsl(var(--primary))" }}>
-          <Signal className="w-4 h-4" /><span>TelecomSales</span>
-        </div>
-      </div>
-
-      {/* Mobile drawer */}
-      {open && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <aside className="relative w-64 bg-white flex flex-col h-full shadow-xl">
-            <button onClick={() => setOpen(false)} className="absolute top-4 right-4 btn-ghost"><X className="w-4 h-4" /></button>
-            {sidebar}
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-56 bg-[#1A1A1A] z-50">
+            <Sidebar />
           </aside>
         </div>
       )}
 
-      <main className="flex-1 overflow-auto md:pt-0 pt-14">
-        <div className="p-4 md:p-8 max-w-7xl mx-auto">
-          {children}
+      {/* Main */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Mobile topbar */}
+        <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-[#EBEBEB]">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: "#FFD200" }}>
+              <span className="text-black font-black text-[10px]">bee</span>
+            </div>
+            <span className="font-bold text-sm">BeeSells</span>
+          </div>
+          <button onClick={() => setSidebarOpen(true)} className="btn-ghost">
+            <Menu className="w-5 h-5" />
+          </button>
         </div>
-      </main>
+
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-6 max-w-7xl mx-auto">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
