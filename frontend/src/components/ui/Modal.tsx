@@ -14,25 +14,24 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = "max-
   if (!open) return null;
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div
-        className={`modal ${maxWidth} w-full flex flex-col`}
-        style={{ maxHeight: "min(90vh, 700px)", padding: 0 }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 shrink-0">
-          <h2 className="text-lg font-semibold">{title}</h2>
+      <div className={`modal ${maxWidth} w-full flex flex-col`}
+        style={{ maxHeight: "min(90vh, 700px)" }}
+        onClick={e => e.stopPropagation()}>
+        {/* Header with yellow accent */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-[#F0F0F0] shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-1 h-5 rounded-full" style={{ background: "#FFD200" }} />
+            <h2 className="text-base font-bold text-[#1A1A1A]">{title}</h2>
+          </div>
           <button onClick={onClose} className="btn-ghost"><X className="w-4 h-4" /></button>
         </div>
-
-        {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 min-h-0 px-6 py-4">
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5">
           {children}
         </div>
-
-        {/* Footer - always visible at bottom */}
+        {/* Footer */}
         {footer && (
-          <div className="flex gap-3 px-6 pb-6 pt-4 border-t border-gray-100 shrink-0 bg-white rounded-b-xl">
+          <div className="flex gap-3 px-6 pb-5 pt-4 border-t border-[#F0F0F0] shrink-0 bg-white rounded-b-2xl">
             {footer}
           </div>
         )}
@@ -42,7 +41,5 @@ export function Modal({ open, onClose, title, children, footer, maxWidth = "max-
 }
 
 export function ModalFooter({ children }: { children: ReactNode }) {
-  // This is kept for backward compat but content is rendered inline in scroll area
-  // Pages should migrate to using the footer prop on Modal
-  return <div className="flex gap-3 pt-4 mt-4 border-t border-gray-100">{children}</div>;
+  return <div className="flex gap-3 pt-4 mt-4 border-t border-[#F0F0F0]">{children}</div>;
 }
