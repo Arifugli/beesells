@@ -191,12 +191,27 @@ router.get("/manager/dashboard", managerOnly, wrap(async (req, res) => {
       const totalRevenue = tariffStats.reduce((s, t) => s + t.revenue, 0);
 
       const withTargets = kpis.filter(k => k.target > 0);
-      const avgPercent = withTargets.length > 0 ? Math.round(withTargets.reduce((s, k) => s + k.percent, 0) / withTargets.length) : 0;
+      const avgDevicePercent = withTargets.length > 0 ? Math.round(withTargets.reduce((s, k) => s + k.percent, 0) / withTargets.length) : 0;
 
-      operatorStats.push({ operator: op, kpis, tariffStats, totalRevenue, avgPercent });
+      // SIM score — % of tariff plan if plan exists, otherwise raw quantity
+      const totalSimPlan = tariffStats.reduce((s, t) => s + t.target, 0);
+      const totalSimQty = tariffStats.reduce((s, t) => s + t.quantity, 0);
+      const simScore = totalSimPlan > 0
+        ? Math.round((totalSimQty / totalSimPlan) * 100)
+        : totalSimQty;
+
+      // Combined: SIM priority 60%, devices 40%
+      const avgPercent = Math.round(simScore * 0.6 + avgDevicePercent * 0.4);
+
+      operatorStats.push({ operator: op, kpis, tariffStats, totalRevenue, avgPercent, simScore, devicePercent: avgDevicePercent });
     }
 
-    operatorStats.sort((a, b) => b.avgPercent - a.avgPercent);
+    // Sort by SIM first (primary), then combined for tiebreaking
+    operatorStats.sort((a, b) => {
+      const aScore = (a as any).simScore * 0.6 + (a as any).devicePercent * 0.4;
+      const bScore = (b as any).simScore * 0.6 + (b as any).devicePercent * 0.4;
+      return bScore - aScore;
+    });
     operatorStats.forEach((s, i) => Object.assign(s, { rank: i + 1 }));
     branchStats.push({ branch, operators: operatorStats });
   }

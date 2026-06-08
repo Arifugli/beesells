@@ -79,8 +79,9 @@ router.get("/operator/dashboard", requireAuth("operator"), wrap(async (req, res)
   });
   const totalRevenue = tariffStats.reduce((s, t) => s + t.revenue, 0);
 
-  // Team rank (overall + per category)
+  // Team ranks — two separate: SIM sales (tariffs) and Devices/KPI
   let teamRank = 1, teamSize = 1;
+  let simRank = 1, deviceRank = 1;
   const kpiRanks: { categoryId: number; rank: number }[] = [];
 
   if (branchRow) {
@@ -91,26 +92,57 @@ router.get("/operator/dashboard", requireAuth("operator"), wrap(async (req, res)
     teamSize = branchOpRows.length;
 
     // Collect stats for all operators
-    const allOpStats: { id: number; avg: number; byCategory: Record<number, number> }[] = [];
+    const allOpStats: {
+      id: number;
+      kpiAvg: number;
+      simPercent: number;
+      byCategory: Record<number, number>;
+    }[] = [];
+
     for (const op of branchOpRows) {
+      // KPI (devices)
       const t = await db.select().from(kpiTargetsTable).where(and(eq(kpiTargetsTable.operatorId, op.id), eq(kpiTargetsTable.month, month)));
       const e = await db.select().from(kpiEntriesTable).where(and(eq(kpiEntriesTable.operatorId, op.id), sql`${kpiEntriesTable.date} LIKE ${month + "%"}`));
       const byCategory: Record<number, number> = {};
-      const avgs: number[] = [];
+      const kpiAvgs: number[] = [];
       for (const cat of categories) {
         const tgt = t.find(x => x.categoryId === cat.id)?.target ?? 0;
         const act = e.filter(x => x.categoryId === cat.id).reduce((s, x) => s + x.value, 0);
         const pct = tgt > 0 ? (act / tgt) * 100 : 0;
         byCategory[cat.id] = pct;
-        if (tgt > 0) avgs.push(pct);
+        if (tgt > 0) kpiAvgs.push(pct);
       }
-      allOpStats.push({ id: op.id, avg: avgs.length ? avgs.reduce((s, v) => s + v, 0) / avgs.length : 0, byCategory });
+      const kpiAvg = kpiAvgs.length ? kpiAvgs.reduce((s, v) => s + v, 0) / kpiAvgs.length : 0;
+
+      // SIM (tariff sales) — sum quantity vs plan
+      const tTariff = await db.select().from(tariffTargetsTable).where(and(eq(tariffTargetsTable.operatorId, op.id), eq(tariffTargetsTable.month, month)));
+      const sTariff = await db.select().from(tariffSalesTable).where(and(eq(tariffSalesTable.operatorId, op.id), sql`${tariffSalesTable.date} LIKE ${month + "%"}`));
+      const totalSimPlan = tTariff.reduce((s, x) => s + x.target, 0);
+      const totalSimFact = sTariff.reduce((s, x) => s + x.quantity, 0);
+      // If no plan set, rank by raw quantity
+      const simPercent = totalSimPlan > 0
+        ? (totalSimFact / totalSimPlan) * 100
+        : totalSimFact; // use raw count as score when no plan
+
+      allOpStats.push({ id: op.id, kpiAvg, simPercent, byCategory });
     }
 
-    // Overall rank
-    allOpStats.sort((a, b) => b.avg - a.avg);
-    const idx = allOpStats.findIndex(r => r.id === operatorId);
-    teamRank = idx >= 0 ? idx + 1 : 1;
+    // SIM rank — primary rating (higher % of plan = better; if no plan, higher count = better)
+    const simSorted = [...allOpStats].sort((a, b) => b.simPercent - a.simPercent);
+    const simIdx = simSorted.findIndex(r => r.id === operatorId);
+    simRank = simIdx >= 0 ? simIdx + 1 : teamSize;
+
+    // Device/KPI rank
+    const kpiSorted = [...allOpStats].sort((a, b) => b.kpiAvg - a.kpiAvg);
+    const kpiIdx = kpiSorted.findIndex(r => r.id === operatorId);
+    deviceRank = kpiIdx >= 0 ? kpiIdx + 1 : teamSize;
+
+    // Overall rank — SIM has priority: composite = simPercent * 0.6 + kpiAvg * 0.4
+    const combinedSorted = [...allOpStats].sort((a, b) =>
+      (b.simPercent * 0.6 + b.kpiAvg * 0.4) - (a.simPercent * 0.6 + a.kpiAvg * 0.4)
+    );
+    const overallIdx = combinedSorted.findIndex(r => r.id === operatorId);
+    teamRank = overallIdx >= 0 ? overallIdx + 1 : teamSize;
 
     // Per-category rank
     for (const cat of categories) {
@@ -120,7 +152,7 @@ router.get("/operator/dashboard", requireAuth("operator"), wrap(async (req, res)
     }
   }
 
-  res.json({ operator, branch: branchRow ?? null, month, kpis, tariffStats, totalRevenue, daysLeft: dl, teamRank, teamSize, kpiRanks });
+  res.json({ operator, branch: branchRow ?? null, month, kpis, tariffStats, totalRevenue, daysLeft: dl, teamRank, teamSize, simRank, deviceRank, kpiRanks });
 }));
 
 // GET /operator/entries?month=
