@@ -161,10 +161,21 @@ export default function OperatorDashboard() {
                 <ComparisonBadge current={avgPercent} previous={compareAvg} />
               )}
             </div>
-            {/* Overall rank */}
-            <p className="text-xs font-medium text-gray-600 mb-2">
-              🏆 Место #{data.teamRank} из {data.teamSize} (общий)
-            </p>
+            {/* Dual ranking: SIM (primary) + Devices */}
+            <div className="space-y-1 mb-2">
+              <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                📶 SIM-карты:
+                <span className={`ml-1 font-bold ${data.simRank === 1 ? "text-amber-500" : data.simRank <= 3 ? "text-indigo-600" : "text-gray-600"}`}>
+                  #{data.simRank ?? data.teamRank} из {data.teamSize}
+                </span>
+              </p>
+              <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                📱 Девайсы:
+                <span className={`ml-1 font-bold ${data.deviceRank === 1 ? "text-amber-500" : data.deviceRank <= 3 ? "text-indigo-600" : "text-gray-600"}`}>
+                  #{data.deviceRank ?? data.teamRank} из {data.teamSize}
+                </span>
+              </p>
+            </div>
             {/* Per-KPI ranks */}
             {data.kpiRanks && data.kpiRanks.length > 0 && (
               <div className="space-y-1 border-t border-gray-200 pt-2 mt-2">

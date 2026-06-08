@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -29,6 +29,25 @@ export default function OperatorLog() {
     queryFn: () => api.operator.dashboard(month),
     enabled: !!user,
   });
+
+  // Подгружаем уже введённые значения за выбранный день
+  // Оператор сразу видит что уже записано и может скорректировать
+  useEffect(() => {
+    if (!dashboard) return;
+    const newKpi: Record<number, string> = {};
+    for (const kpi of dashboard.kpis) {
+      const entry = kpi.dailyEntries.find(e => e.date === date);
+      if (entry) newKpi[kpi.category.id] = String(entry.value);
+    }
+    setKpiValues(newKpi);
+
+    const newTariff: Record<number, string> = {};
+    for (const ts of dashboard.tariffStats) {
+      const sale = ts.dailySales.find(s => s.date === date);
+      if (sale && sale.quantity > 0) newTariff[ts.tariff.id] = String(sale.quantity);
+    }
+    setTariffValues(newTariff);
+  }, [date, dashboard]);
 
   const kpiMutation = useMutation({
     mutationFn: (entries: { categoryId: number; date: string; value: number }[]) =>

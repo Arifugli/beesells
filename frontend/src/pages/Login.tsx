@@ -66,7 +66,7 @@ export default function Login() {
             BeeSells
           </h1>
           <p className="text-[#888] text-sm leading-relaxed">
-            Система управления продажами и KPI для полевых сотрудников Beeline Uzbekistan
+            Система управления продажами и KPI для операторов ОПиО Beeline Uzbekistan
           </p>
         </div>
 

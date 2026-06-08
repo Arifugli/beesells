@@ -158,10 +158,11 @@ export default function ManagerDashboard() {
 
         return (
           <div key={bs.branch.id} className="card shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2 flex-wrap">
               <Building2 className="w-4 h-4 text-gray-400" />
               <h2 className="font-semibold">{bs.branch.name}</h2>
               <span className="badge badge-muted ml-auto">{bs.operators.length} операторов</span>
+              <span className="text-xs text-gray-400 hidden sm:block">Рейтинг: SIM-карты (60%) + Девайсы/KPI (40%)</span>
             </div>
 
             {bs.operators.length === 0 ? (
@@ -178,7 +179,9 @@ export default function ManagerDashboard() {
                           <span className="block truncate" title={c.name}>{c.name}</span>
                         </th>
                       ))}
-                      <th className="text-right" style={{ minWidth: 80 }}>Avg %</th>
+                      <th className="text-right" style={{ minWidth: 80 }}>SIM %</th>
+                      <th className="text-right" style={{ minWidth: 80 }}>KPI %</th>
+                      <th className="text-right" style={{ minWidth: 80 }}>Итог</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -213,6 +216,16 @@ export default function ManagerDashboard() {
                               </td>
                             );
                           })}
+                          <td className="text-right">
+                            <span className={`font-bold text-sm text-indigo-600`}>
+                              {(op as any).simScore !== undefined ? `${(op as any).simScore}%` : "—"}
+                            </span>
+                          </td>
+                          <td className="text-right">
+                            <span className={`font-bold text-sm text-emerald-600`}>
+                              {(op as any).devicePercent !== undefined ? `${(op as any).devicePercent}%` : "—"}
+                            </span>
+                          </td>
                           <td className="text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               <span className={`font-bold text-sm ${behind ? "text-red-500" : "text-gray-900"}`}>

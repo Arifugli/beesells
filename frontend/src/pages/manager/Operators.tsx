@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type User, type KpiCategory, type KpiTarget, type OperatorWithBranch } from "@/lib/api";
+import { api, type User, type KpiCategory, type KpiTarget, type Tariff, type TariffTarget, type OperatorWithBranch } from "@/lib/api";
 import { currentMonth } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { Modal } from "@/components/ui/Modal";
@@ -15,79 +15,168 @@ function TargetsModal({
 }) {
   const qc = useQueryClient();
   const [month, setMonth] = useState(initialMonth);
-  const { data: targets = [], isLoading } = useQuery({
+  const [tab, setTab] = useState<"kpi" | "tariffs">("kpi");
+
+  const { data: targets = [], isLoading: kpiLoading } = useQuery({
     queryKey: ["targets", operator.id, month],
     queryFn: () => api.manager.targets(operator.id, month),
   });
 
-  const [values, setValues] = useState<Record<number, string>>({});
+  const { data: tariffs = [] } = useQuery({
+    queryKey: ["manager-tariffs"],
+    queryFn: api.manager.tariffs,
+  });
 
-  const mutation = useMutation({
+  const { data: tariffTargets = [], isLoading: tariffLoading } = useQuery({
+    queryKey: ["tariff-targets", operator.id, month],
+    queryFn: () => api.manager.tariffTargets(operator.id, month),
+  });
+
+  const [kpiValues, setKpiValues] = useState<Record<number, string>>({});
+  const [tariffValues, setTariffValues] = useState<Record<number, string>>({});
+
+  const kpiMutation = useMutation({
     mutationFn: (entries: { categoryId: number; target: number }[]) =>
       Promise.all(entries.map(e => api.manager.setTarget({ operatorId: operator.id, categoryId: e.categoryId, month, target: e.target }))),
     onSuccess: () => {
-      toast("Планы сохранены", "success");
+      toast("Планы KPI сохранены", "success");
       qc.invalidateQueries({ queryKey: ["manager-dashboard"] });
       qc.invalidateQueries({ queryKey: ["targets", operator.id] });
       qc.invalidateQueries({ queryKey: ["archive-months"] });
-      setValues({});
+      setKpiValues({});
     },
     onError: (e: Error) => toast(e.message, "error"),
   });
 
-  const getTarget = (catId: number) => targets.find((t: KpiTarget) => t.categoryId === catId)?.target ?? 0;
+  const tariffMutation = useMutation({
+    mutationFn: (entries: { tariffId: number; target: number }[]) =>
+      Promise.all(entries.map(e => api.manager.setTariffTarget({ operatorId: operator.id, tariffId: e.tariffId, month, target: e.target }))),
+    onSuccess: () => {
+      toast("Планы по тарифам сохранены", "success");
+      qc.invalidateQueries({ queryKey: ["manager-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["tariff-targets", operator.id] });
+      setTariffValues({});
+    },
+    onError: (e: Error) => toast(e.message, "error"),
+  });
 
-  const handleSave = () => {
-    const entries = Object.entries(values)
+  const getKpiTarget = (catId: number) => targets.find((t: KpiTarget) => t.categoryId === catId)?.target ?? 0;
+  const getTariffTarget = (tariffId: number) => tariffTargets.find((t: TariffTarget) => t.tariffId === tariffId)?.target ?? 0;
+
+  const handleKpiSave = () => {
+    const entries = Object.entries(kpiValues)
       .filter(([, v]) => v !== "")
       .map(([catId, v]) => ({ categoryId: Number(catId), target: Math.max(0, parseInt(v) || 0) }));
     if (entries.length === 0) { toast("Не изменено ни одно значение", "error"); return; }
-    mutation.mutate(entries);
+    kpiMutation.mutate(entries);
   };
+
+  const handleTariffSave = () => {
+    const entries = Object.entries(tariffValues)
+      .filter(([, v]) => v !== "")
+      .map(([tariffId, v]) => ({ tariffId: Number(tariffId), target: Math.max(0, parseInt(v) || 0) }));
+    if (entries.length === 0) { toast("Не изменено ни одно значение", "error"); return; }
+    tariffMutation.mutate(entries);
+  };
+
+  const isPending = kpiMutation.isPending || tariffMutation.isPending;
 
   return (
     <Modal
       open
       onClose={onClose}
-      title={`Планы KPI — ${operator.name}`}
+      title={`Планы — ${operator.name}`}
       maxWidth="max-w-lg"
       footer={<>
         <button onClick={onClose} className="btn-outline flex-1">Закрыть</button>
-        <button onClick={handleSave} disabled={mutation.isPending || categories.length === 0} className="btn-primary flex-1">
-          {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+        <button
+          onClick={tab === "kpi" ? handleKpiSave : handleTariffSave}
+          disabled={isPending || (tab === "kpi" ? categories.length === 0 : tariffs.length === 0)}
+          className="btn-primary flex-1"
+        >
+          {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
           Сохранить планы
         </button>
       </>}
     >
       <div className="mb-5">
-        <MonthPicker value={month} onChange={(m) => { setMonth(m); setValues({}); }} />
+        <MonthPicker value={month} onChange={(m) => { setMonth(m); setKpiValues({}); setTariffValues({}); }} />
       </div>
-      {isLoading ? (
-        <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
-      ) : categories.length === 0 ? (
-        <p className="text-gray-400 text-sm text-center py-6">Нет активных KPI категорий. Создайте их в разделе администратора.</p>
-      ) : (
-        <div className="space-y-4">
-          {categories.map(cat => (
-            <div key={cat.id} className="flex items-center gap-4">
-              <div className="flex-1">
-                <p className="text-sm font-medium">{cat.name}</p>
-                <p className="text-xs text-gray-400">Текущий план: {getTarget(cat.id)} {cat.unit}</p>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg mb-5">
+        <button
+          onClick={() => setTab("kpi")}
+          className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-all ${tab === "kpi" ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}
+        >
+          KPI / Девайсы
+        </button>
+        <button
+          onClick={() => setTab("tariffs")}
+          className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-all ${tab === "tariffs" ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}
+        >
+          Тарифы (SIM)
+        </button>
+      </div>
+
+      {tab === "kpi" && (
+        kpiLoading ? (
+          <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+        ) : categories.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-6">Нет активных KPI категорий. Создайте их в разделе администратора.</p>
+        ) : (
+          <div className="space-y-4">
+            {categories.map(cat => (
+              <div key={cat.id} className="flex items-center gap-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{cat.name}</p>
+                  <p className="text-xs text-gray-400">Текущий план: {getKpiTarget(cat.id)} {cat.unit}</p>
+                </div>
+                <div className="w-36">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder={String(getKpiTarget(cat.id))}
+                    value={kpiValues[cat.id] ?? ""}
+                    onChange={e => setKpiValues(p => ({ ...p, [cat.id]: e.target.value }))}
+                    className="input text-right"
+                  />
+                </div>
+                <span className="text-xs text-gray-400 w-8">{cat.unit}</span>
               </div>
-              <div className="w-36">
-                <input
-                  type="number"
-                  min="0"
-                  placeholder={String(getTarget(cat.id))}
-                  value={values[cat.id] ?? ""}
-                  onChange={e => setValues(p => ({ ...p, [cat.id]: e.target.value }))}
-                  className="input text-right"
-                />
+            ))}
+          </div>
+        )
+      )}
+
+      {tab === "tariffs" && (
+        tariffLoading ? (
+          <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+        ) : tariffs.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-6">Нет активных тарифов. Создайте их в разделе администратора.</p>
+        ) : (
+          <div className="space-y-4">
+            {tariffs.map((tariff: Tariff) => (
+              <div key={tariff.id} className="flex items-center gap-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{tariff.name}</p>
+                  <p className="text-xs text-gray-400">Текущий план: {getTariffTarget(tariff.id)} шт · {tariff.price.toLocaleString("ru-RU")} сум/шт</p>
+                </div>
+                <div className="w-36">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder={String(getTariffTarget(tariff.id))}
+                    value={tariffValues[tariff.id] ?? ""}
+                    onChange={e => setTariffValues(p => ({ ...p, [tariff.id]: e.target.value }))}
+                    className="input text-right"
+                  />
+                </div>
+                <span className="text-xs text-gray-400 w-8">шт</span>
               </div>
-              <span className="text-xs text-gray-400 w-8">{cat.unit}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )
       )}
     </Modal>
   );
